@@ -1,0 +1,48 @@
+name: Hourly Data Fetch
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 * * * *' # Runs every hour
+
+jobs:
+  fetch_data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+
+      - name: Run fetch request and process data
+        run: |
+          echo "Running fetch request..."
+          DATA=$(curl -X POST https://api.tarkov.dev/graphql \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d '{
+                "query": "{ items(type: any){ id avg24hPrice } }"
+            }')
+          echo "Processing data..."
+          PROCESSED_DATA=$(echo $DATA | node -e "\
+            const data = JSON.parse(fs.readFileSync(0, 'utf-8'));
+            const processedData = {};
+            data.data.items.forEach(item => {
+              processedData[item.id] = item.avg24hPrice;
+            });
+            console.log(JSON.stringify(processedData));
+          ")
+          echo $PROCESSED_DATA > prices.json
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add prices.json
+          git commit -m "Update prices.json"
+          git push
